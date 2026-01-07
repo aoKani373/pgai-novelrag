@@ -8,5 +8,6 @@ dependencies = [
     "fastapi[standard]>=0.128.0",
     "pgai[sqlalchemy]>=0.12.1",
     "pgvector>=0.4.2",
+    "psycopg[binary]>=3.3.2",
     "sqlmodel>=0.0.31",
 ]

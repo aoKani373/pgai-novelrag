@@ -729,6 +729,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "pgai", extra = ["sqlalchemy"] },
     { name = "pgvector" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "sqlmodel" },
 ]
 
@@ -737,6 +738,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.128.0" },
     { name = "pgai", extras = ["sqlalchemy"], specifier = ">=0.12.1" },
     { name = "pgvector", specifier = ">=0.4.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.2" },
     { name = "sqlmodel", specifier = ">=0.0.31" },
 ]
 
