@@ -1,13 +1,28 @@
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from alembic.script import ScriptDirectory
+from dotenv import load_dotenv, find_dotenv
+from pgai.alembic import register_operations
+
+from naiverag.main import (
+    SQLModel, engine,
+    User, Novel, Chapter, Episode,
+    DATABASE_URL
+)
+
+load_dotenv(find_dotenv())
+register_operations()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+db_url = DATABASE_URL
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://")
+config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -18,12 +33,43 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+
+
+def process_revision_directives(context, revision, directives):
+    # extract Migration
+    script = ScriptDirectory.from_config(context.config)
+    # extract current head revision
+    head_revision = script.get_current_head()
+
+    if head_revision is None:
+        # edge case with first migration
+        new_rev_id = 1
+    else:
+        try:
+            # default branch with incrementation
+            last_rev_id = int(head_revision.lstrip("0") or 0)
+            new_rev_id = last_rev_id + 1
+        except ValueError:
+            return
+        
+    # fill zeros up to 4 digits: 1 -> 0001
+    rev_id_str = f"{new_rev_id:04}"
+    for directive in directives:
+        directive.rev_id = rev_id_str
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "table" and name in target_metadata.info.get(
+        "pgai_managed_tables", set()
+    ):
+        return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -44,6 +90,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        process_revision_directives=process_revision_directives,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -57,15 +105,14 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = engine
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, 
+            target_metadata=target_metadata,
+            process_revision_directives=process_revision_directives,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
