@@ -3,7 +3,7 @@ from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 import json
 
-from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, text
+from sqlmodel import SQLModel, Field, Relationship, create_engine, Session, text, select
 from sqlalchemy import DateTime
 from datetime import datetime, timezone
 import uuid
@@ -11,11 +11,25 @@ from pgvector.sqlalchemy import Vector
 import pgai
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from typing import Literal
+from openai import OpenAI
 
 _ = load_dotenv(find_dotenv())
-DATABASE_URL = os.getenv("DATABASE_URL")
-EMBEDD_DIMENSION = os.getenv("EMBEDD_DIMENSION")
+POSTGRES_USER = os.getenv("POSTGRES_USER")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+
+DATABASE_URL = (
+    f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
+    f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+)
+EMBEDD_MODEL = os.getenv("EMBEDD_MODEL", "text-embedding-3-small")
+EMBEDD_DIMENSION = int(os.getenv("EMBEDD_DIMENSION", 768))
+
+openai_client = OpenAI()
 
 def utc_now():
     return datetime.now(timezone.utc)
@@ -108,7 +122,7 @@ class Episode(EpisodeBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
 
     chapter: Chapter | None = Relationship(back_populates="episodes")
-    # chunks: list["EpisodeChunk"] = Relationship(back_populates="episode")
+    chunks: list["EpisodeChunk"] = Relationship(back_populates="episode")
 
 class EpisodeCreate(EpisodeBase):
     pass
@@ -118,20 +132,26 @@ class EpisodePublic(EpisodeBase):
 
 
 # episode_chunk
-# class EpisodeChunkBase(SQLModel):
-#     embedding_uuid: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-#     chunk_seq: int
-#     id: int = Field(foreign_key="episode.id")
+class EpisodeChunkBase(SQLModel):
+    embedding_uuid: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    chunk_seq: int
+    chunk: str
+    id: int = Field(foreign_key="episode.id")
 
-# class EpisodeChunk(EpisodeChunkBase, table=True):
-#     __tablename__ = "episode_chunk"
+class EpisodeChunk(EpisodeChunkBase, table=True):
+    __tablename__ = "episode_chunk"
 
-#     embedding: list[float] = Field(sa_type=Vector(EMBEDD_DIMENSION))
+    embedding: list[float] = Field(sa_type=Vector(EMBEDD_DIMENSION))
 
-#     episode: Episode = Relationship(back_populates="chunks")
+    episode: Episode = Relationship(back_populates="chunks")
 
-# class EpisodeChunkPublic(EpisodeChunkBase):
-#     distance: float
+class EpisodeChunkPublic(EpisodeChunkBase):
+    distance: float
+
+class QueryRequest(SQLModel):
+    query: str
+    top_k: int = Field(default=5, ge=1, lt=50)
+    source: Literal["episode", "all"] = Field(default="episode")
 
 
 engine = create_engine(to_psycopg3(DATABASE_URL), echo=True)
@@ -210,6 +230,28 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/")
 def root():
     return {"message": "Hello World"}
+
+@app.post("/search", response_model=list[EpisodeChunkPublic])
+def query_episode(*, session: Session=Depends(get_session), body: QueryRequest):
+    query_embeddings = openai_client.embeddings.create(
+        model=EMBEDD_MODEL, input=body.query, dimensions=EMBEDD_DIMENSION, encoding_format="float"
+    ).data[0].embedding
+
+    distance = EpisodeChunk.embedding.cosine_distance(query_embeddings).label("distance")
+    results = session.exec(
+        select(EpisodeChunk, distance).order_by(distance).limit(body.top_k)
+    ).all()
+    chunks = [
+        EpisodeChunkPublic(
+            embedding_uuid=r.embedding_uuid,
+            chunk_seq=r.chunk_seq,
+            chunk=r.chunk,
+            id=r.id,
+            distance=distance
+        ) for r, distance in results
+    ]
+
+    return chunks
 
 
 if __name__ == "__main__":
