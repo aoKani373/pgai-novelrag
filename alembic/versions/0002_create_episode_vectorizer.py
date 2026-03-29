@@ -28,11 +28,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS ai CASCADE;")
+    op.execute("CREATE SCHEMA IF NOT EXISTS app")
     op.create_vectorizer(
-        source="episode",
+        source="data.episode",
         name="episode_vectorizer",
         loading=LoadingColumnConfig(column_name="content"),
         destination=DestinationTableConfig(
+            target_schema="app",
             target_table="episode_chunk"
         ),
         embedding=EmbeddingOpenaiConfig(
@@ -40,8 +42,8 @@ def upgrade() -> None:
             dimensions=768
         ),
         chunking=ChunkingRecursiveCharacterTextSplitterConfig(
-            chunk_size=1000,
-            chunk_overlap=400,
+            chunk_size=600,
+            chunk_overlap=200,
             separators=[".", "!", "?", "。", "．", "！", "？"],
             is_separator_regex=False
         ),

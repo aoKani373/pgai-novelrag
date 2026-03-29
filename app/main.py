@@ -64,6 +64,8 @@ class UserBase(TimestampModel):
     name: str = Field(index=True, nullable=False)
 
 class User(UserBase, table=True):
+    __table_args__ = {"schema": "data"}
+
     id: int | None = Field(default=None, primary_key=True)
 
     novels: list["Novel"] = Relationship(back_populates="author")
@@ -78,9 +80,11 @@ class UserPublic(UserBase):
 # Novel
 class NovelBase(TimestampModel):
     title: str = Field(index=True, nullable=False)
-    author_id: int = Field(foreign_key="user.id", nullable=False)
+    author_id: int = Field(foreign_key="data.user.id", nullable=False)
 
 class Novel(NovelBase, table=True):
+    __table_args__ = {"schema": "data"}
+
     id: int | None = Field(default=None, primary_key=True)
 
     author: User | None = Relationship(back_populates="novels")
@@ -97,9 +101,11 @@ class NovelPublic(NovelBase):
 class ChapterBase(TimestampModel):
     title: str = Field(index=True, nullable=False)
     order: int = Field(index=True, nullable=False)
-    novel_id: int = Field(foreign_key="novel.id", nullable=False)
+    novel_id: int = Field(foreign_key="data.novel.id", nullable=False)
 
 class Chapter(ChapterBase, table=True):
+    __table_args__ = {"schema": "data"}
+    
     id: int | None = Field(default=None, primary_key=True)
 
     novel: Novel | None = Relationship(back_populates="chapters")
@@ -116,9 +122,11 @@ class ChapterPublic(ChapterBase):
 class EpisodeBase(TimestampModel):
     title: str = Field(index=True)
     content: str | None = Field(default=None)
-    chapter_id: int = Field(foreign_key="chapter.id", nullable=False, index=True)
+    chapter_id: int = Field(foreign_key="data.chapter.id", nullable=False, index=True)
 
 class Episode(EpisodeBase, table=True):
+    __table_args__ = {"schema": "data"}
+
     id: int | None = Field(default=None, primary_key=True)
 
     chapter: Chapter | None = Relationship(back_populates="episodes")
@@ -136,10 +144,11 @@ class EpisodeChunkBase(SQLModel):
     embedding_uuid: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     chunk_seq: int
     chunk: str
-    id: int = Field(foreign_key="episode.id")
+    id: int = Field(foreign_key="data.episode.id")
 
 class EpisodeChunk(EpisodeChunkBase, table=True):
     __tablename__ = "episode_chunk"
+    __table_args__ = {"schema": "app"}
 
     embedding: list[float] = Field(sa_type=Vector(EMBEDD_DIMENSION))
 
@@ -255,5 +264,4 @@ def query_episode(*, session: Session=Depends(get_session), body: QueryRequest):
 
 
 if __name__ == "__main__":
-    # drop_all_tables()
-    init_data("data/inputs/documents.json")
+    update_pgai()
