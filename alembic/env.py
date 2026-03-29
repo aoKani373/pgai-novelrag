@@ -6,11 +6,8 @@ from alembic.script import ScriptDirectory
 from dotenv import load_dotenv, find_dotenv
 from pgai.alembic import register_operations
 
-from app.main import (
-    SQLModel, engine,
-    User, Novel, Chapter, Episode,
-    DATABASE_URL
-)
+from app.models import User, Novel, Chapter, Episode
+from app.database import SQLModel, engine, DATABASE_URL
 
 load_dotenv(find_dotenv())
 register_operations()
